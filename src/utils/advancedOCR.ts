@@ -1,4 +1,3 @@
-
 import Tesseract from 'tesseract.js';
 import { ImagePreprocessor } from './imagePreprocessing';
 
@@ -43,13 +42,13 @@ export class AdvancedOCREngine {
 
     // Optimize Tesseract parameters for cadastral maps
     await this.worker.setParameters({
-      tessedit_pageseg_mode: '6', // PSM_SINGLE_UNIFORM_BLOCK
-      tessedit_ocr_engine_mode: '1', // OEM_LSTM_ONLY  
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789,. ',
       tessjs_create_hocr: '1',
       tessjs_create_tsv: '1',
       tessjs_create_box: '1'
     });
+
+    // Set PSM and OEM separately using the recognize options
   }
 
   async processImage(imageElement: HTMLImageElement, progressCallback?: (progress: number) => void): Promise<DetectedText[]> {
