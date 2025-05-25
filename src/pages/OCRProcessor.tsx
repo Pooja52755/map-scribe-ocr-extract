@@ -8,34 +8,44 @@ import ImageUpload from '@/components/ocr/ImageUpload';
 import ImagePreview from '@/components/ocr/ImagePreview';
 import ResultsDisplay from '@/components/ocr/ResultsDisplay';
 import ProcessingStatus from '@/components/ocr/ProcessingStatus';
+import { AdvancedOCREngine, DetectedText } from '@/utils/advancedOCR';
 
 export interface OCRResult {
   characters: string[];
   numbers: string[];
   processingTime: number;
   confidence: number;
+  detailedResults: DetectedText[];
 }
 
 const OCRProcessor = () => {
   const [uploadedImage, setUploadedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageElement, setImageElement] = useState<HTMLImageElement | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState(0);
   const [ocrResults, setOcrResults] = useState<OCRResult | null>(null);
+  const [ocrEngine] = useState(() => new AdvancedOCREngine());
   const { toast } = useToast();
 
   const handleImageUpload = (file: File) => {
     setUploadedImage(file);
     const reader = new FileReader();
     reader.onload = (e) => {
-      setImagePreview(e.target?.result as string);
+      const imageSrc = e.target?.result as string;
+      setImagePreview(imageSrc);
+      
+      // Create image element for OCR processing
+      const img = new Image();
+      img.onload = () => setImageElement(img);
+      img.src = imageSrc;
     };
     reader.readAsDataURL(file);
     setOcrResults(null);
   };
 
   const processImage = async () => {
-    if (!uploadedImage) {
+    if (!uploadedImage || !imageElement) {
       toast({
         title: "No Image Selected",
         description: "Please upload a cadastral map image first.",
@@ -47,53 +57,56 @@ const OCRProcessor = () => {
     setIsProcessing(true);
     setProcessingProgress(0);
 
+    const startTime = Date.now();
+
     try {
-      // Simulate processing steps
-      const steps = [
-        { name: "Preprocessing image...", duration: 1000 },
-        { name: "Detecting text regions...", duration: 1500 },
-        { name: "Segmenting characters...", duration: 1200 },
-        { name: "Running OCR...", duration: 2000 },
-        { name: "Post-processing results...", duration: 800 }
-      ];
+      console.log('Starting advanced OCR processing...');
+      
+      // Process image with advanced OCR engine
+      const detectedTexts = await ocrEngine.processImage(
+        imageElement,
+        (progress) => setProcessingProgress(progress)
+      );
 
-      let currentProgress = 0;
-      const progressIncrement = 100 / steps.length;
+      const processingTime = Date.now() - startTime;
 
-      for (const step of steps) {
-        await new Promise(resolve => setTimeout(resolve, step.duration));
-        currentProgress += progressIncrement;
-        setProcessingProgress(currentProgress);
-      }
+      // Separate characters and numbers
+      const characters = detectedTexts
+        .filter(item => item.type === 'character')
+        .map(item => item.text)
+        .filter(text => text.length > 2); // Filter out very short texts
 
-      // Simulate OCR results based on the sample data provided
-      const mockResults: OCRResult = {
-        characters: [
-          "Benakanahalli", "Devapur Nalla", "cover tank", "Devatakala", 
-          "Mangihal", "Gonal", "Aladahal", "Covered tank", "Antaral", 
-          "Rajapur", "Stony waste", "Nagarahal", "Devapur", "kagaral", 
-          "kawadimutt", "Konal"
-        ],
-        numbers: [
-          "74", "24", "387", "13", "12", "11", "10", "76", "22", "396",
-          "424", "404", "379", "372", "362", "364", "20", "426", "18",
-          "391", "386", "377", "361", "402", "400", "84", "521", "519",
-          "518", "517", "516", "357", "371", "522", "360"
-        ],
-        processingTime: 6500,
-        confidence: 87.5
+      const numbers = detectedTexts
+        .filter(item => item.type === 'number')
+        .map(item => item.text);
+
+      // Calculate average confidence
+      const avgConfidence = detectedTexts.length > 0 
+        ? detectedTexts.reduce((sum, item) => sum + item.confidence, 0) / detectedTexts.length
+        : 0;
+
+      const results: OCRResult = {
+        characters,
+        numbers,
+        processingTime,
+        confidence: Math.round(avgConfidence * 10) / 10,
+        detailedResults: detectedTexts
       };
 
-      setOcrResults(mockResults);
+      setOcrResults(results);
+      
+      console.log('OCR Results:', results);
+      
       toast({
         title: "Processing Complete!",
-        description: `Extracted ${mockResults.characters.length} text items and ${mockResults.numbers.length} numbers.`
+        description: `Extracted ${characters.length} text items and ${numbers.length} numbers with ${results.confidence.toFixed(1)}% confidence.`
       });
 
     } catch (error) {
+      console.error('OCR Processing Error:', error);
       toast({
         title: "Processing Failed",
-        description: "An error occurred during OCR processing.",
+        description: `OCR processing encountered an error: ${error instanceof Error ? error.message : 'Unknown error'}`,
         variant: "destructive"
       });
     } finally {
@@ -102,16 +115,29 @@ const OCRProcessor = () => {
     }
   };
 
+  // Cleanup OCR engine on unmount
+  React.useEffect(() => {
+    return () => {
+      ocrEngine.terminate();
+    };
+  }, [ocrEngine]);
+
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-7xl mx-auto">
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
-            Cadastral Map OCR System
+            Advanced Cadastral Map OCR System
           </h1>
           <p className="text-lg text-gray-600">
-            Extract characters and numbers from cadastral maps using advanced OCR technology
+            High-accuracy character and number extraction using advanced machine learning
           </p>
+          <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-800">
+              <strong>Enhanced Features:</strong> Image preprocessing, adaptive thresholding, 
+              Gaussian blur noise reduction, contrast enhancement, and LSTM neural network OCR
+            </p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -121,7 +147,7 @@ const OCRProcessor = () => {
               <CardHeader>
                 <CardTitle>Upload Cadastral Map</CardTitle>
                 <CardDescription>
-                  Select a cadastral map image for processing
+                  Select a high-resolution cadastral map image for advanced OCR processing
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -133,6 +159,9 @@ const OCRProcessor = () => {
               <Card>
                 <CardHeader>
                   <CardTitle>Image Preview</CardTitle>
+                  <CardDescription>
+                    Original image ready for processing
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <ImagePreview imageSrc={imagePreview} />
@@ -143,9 +172,9 @@ const OCRProcessor = () => {
             {imagePreview && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Process Image</CardTitle>
+                  <CardTitle>Advanced OCR Processing</CardTitle>
                   <CardDescription>
-                    Start OCR processing to extract text and numbers
+                    Process with ML-enhanced OCR engine featuring preprocessing and neural networks
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -155,15 +184,21 @@ const OCRProcessor = () => {
                     className="w-full"
                     size="lg"
                   >
-                    {isProcessing ? 'Processing...' : 'Start OCR Processing'}
+                    {isProcessing ? 'Processing with Advanced OCR...' : 'Start Advanced OCR Processing'}
                   </Button>
                   
                   {isProcessing && (
                     <div className="mt-4">
                       <Progress value={processingProgress} className="w-full" />
                       <p className="text-sm text-gray-600 mt-2 text-center">
-                        Processing: {Math.round(processingProgress)}%
+                        Advanced Processing: {Math.round(processingProgress)}%
                       </p>
+                      <div className="text-xs text-gray-500 mt-1 text-center">
+                        {processingProgress < 30 && "Applying image preprocessing..."}
+                        {processingProgress >= 30 && processingProgress < 70 && "Running neural network OCR..."}
+                        {processingProgress >= 70 && processingProgress < 90 && "Extracting and classifying text..."}
+                        {processingProgress >= 90 && "Post-processing results..."}
+                      </div>
                     </div>
                   )}
                 </CardContent>
