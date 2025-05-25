@@ -1,3 +1,4 @@
+
 import Tesseract from 'tesseract.js';
 import { ImagePreprocessor } from './imagePreprocessing';
 
@@ -42,8 +43,8 @@ export class AdvancedOCREngine {
 
     // Optimize Tesseract parameters for cadastral maps
     await this.worker.setParameters({
-      tessedit_pageseg_mode: 6, // Changed from string "6" to number 6
-      tessedit_ocr_engine_mode: 1, // Changed from string "1" to number 1
+      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_UNIFORM_BLOCK, // Use PSM enum
+      tessedit_ocr_engine_mode: Tesseract.OEM.LSTM_ONLY, // Use OEM enum
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789,. ',
       tessjs_create_hocr: '1',
       tessjs_create_tsv: '1',
