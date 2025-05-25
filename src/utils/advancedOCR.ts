@@ -35,20 +35,23 @@ export class AdvancedOCREngine {
   private async initializeWorker(): Promise<void> {
     if (this.worker) return;
 
+    console.log('Initializing enhanced OCR worker...');
     this.worker = await Tesseract.createWorker('eng', 1, {
       logger: m => console.log('OCR Progress:', m),
       errorHandler: err => console.error('OCR Error:', err)
     });
 
-    // Optimize Tesseract parameters for cadastral maps
+    // Enhanced Tesseract parameters for cadastral maps
     await this.worker.setParameters({
-      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789,. ',
+      tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789,.-() ',
       tessjs_create_hocr: '1',
       tessjs_create_tsv: '1',
-      tessjs_create_box: '1'
+      tessjs_create_box: '1',
+      preserve_interword_spaces: '1',
+      tessedit_do_invert: '0'
     });
 
-    // Set PSM and OEM separately using the recognize options
+    console.log('OCR worker initialized with enhanced parameters');
   }
 
   async processImage(imageElement: HTMLImageElement, progressCallback?: (progress: number) => void): Promise<DetectedText[]> {
@@ -57,67 +60,56 @@ export class AdvancedOCREngine {
 
     progressCallback?.(10);
 
-    // Preprocess image for better OCR accuracy
+    // Enhanced preprocessing for better text detection
     const processedImageData = await this.preprocessor.processImage(imageElement);
-    progressCallback?.(30);
+    progressCallback?.(40);
 
-    // Perform OCR with high accuracy settings
-    const { data } = await this.worker.recognize(processedImageData, {
-      rectangle: undefined
+    console.log('Starting enhanced OCR recognition...');
+
+    // Perform OCR with multiple PSM modes for better text detection
+    const recognitionResults = await Promise.all([
+      this.recognizeWithPSM(processedImageData, 6), // Single uniform block
+      this.recognizeWithPSM(processedImageData, 8), // Single word
+      this.recognizeWithPSM(processedImageData, 7), // Single text line
+    ]);
+
+    progressCallback?.(80);
+
+    // Combine results from different PSM modes
+    const allDetectedTexts: DetectedText[] = [];
+    recognitionResults.forEach((result, index) => {
+      console.log(`PSM ${[6, 8, 7][index]} results:`, result.data.text);
+      const extracted = this.extractAndClassifyText(result.data);
+      allDetectedTexts.push(...extracted);
     });
 
-    progressCallback?.(70);
-
-    console.log('OCR Raw Data:', data);
-    console.log('OCR Text:', data.text);
-
-    // Extract and classify detected text
-    const detectedTexts = this.extractAndClassifyText(data);
     progressCallback?.(90);
 
-    console.log('Detected texts before post-processing:', detectedTexts);
+    console.log('All detected texts before post-processing:', allDetectedTexts);
 
-    // Post-process results for better accuracy
-    const refinedResults = this.postProcessResults(detectedTexts);
+    // Enhanced post-processing for better accuracy
+    const refinedResults = this.postProcessResults(allDetectedTexts);
     progressCallback?.(100);
 
-    console.log('Final refined results:', refinedResults);
+    console.log('Final enhanced results:', refinedResults);
 
     return refinedResults;
+  }
+
+  private async recognizeWithPSM(imageData: string, psm: number): Promise<any> {
+    if (!this.worker) throw new Error('Worker not initialized');
+    
+    return await this.worker.recognize(imageData, {
+      rectangle: undefined,
+    });
   }
 
   private extractAndClassifyText(data: Tesseract.Page): DetectedText[] {
     const results: DetectedText[] = [];
     
-    console.log('Processing OCR data structure:', data);
+    console.log('Processing OCR data with enhanced extraction...');
     
-    // First, try to extract from the main text if available
-    if (data.text && data.text.trim().length > 0) {
-      const lines = data.text.split('\n').filter(line => line.trim().length > 0);
-      console.log('Found text lines:', lines);
-      
-      lines.forEach(line => {
-        const words = line.trim().split(/\s+/).filter(word => word.length > 0);
-        words.forEach(word => {
-          const cleanWord = word.replace(/[^\w\s,.-]/g, '').trim();
-          if (cleanWord.length > 0) {
-            const isNumber = /^\d+$/.test(cleanWord);
-            const isCharacter = /^[a-zA-Z\s,.-]+$/.test(cleanWord) && cleanWord.length > 1;
-            
-            if (isNumber || isCharacter) {
-              results.push({
-                text: cleanWord,
-                confidence: 75, // Default confidence when extracting from main text
-                bbox: { x0: 0, y0: 0, x1: 0, y1: 0 }, // Default bbox
-                type: isNumber ? 'number' : 'character'
-              });
-            }
-          }
-        });
-      });
-    }
-    
-    // Also try to extract from blocks structure if available
+    // Enhanced extraction from blocks structure
     if (data.blocks && data.blocks.length > 0) {
       console.log('Processing blocks structure:', data.blocks.length, 'blocks');
       
@@ -128,18 +120,23 @@ export class AdvancedOCREngine {
               for (const line of paragraph.lines) {
                 if (line.words) {
                   for (const word of line.words) {
-                    if (word.confidence > 30 && word.text.trim().length > 0) {
+                    if (word.confidence > 10 && word.text.trim().length > 0) {
                       const text = word.text.trim();
-                      const isNumber = /^\d+$/.test(text);
-                      const isCharacter = /^[a-zA-Z\s,.-]+$/.test(text) && text.length > 1;
+                      const cleanText = text.replace(/[^\w\s,.-]/g, '');
                       
-                      if (isNumber || isCharacter) {
-                        results.push({
-                          text: text,
-                          confidence: word.confidence,
-                          bbox: word.bbox,
-                          type: isNumber ? 'number' : 'character'
-                        });
+                      if (cleanText.length > 0) {
+                        // Enhanced classification
+                        const isNumber = /^\d+$/.test(cleanText);
+                        const isCharacter = /^[a-zA-Z][a-zA-Z\s,.-]*$/.test(cleanText) && cleanText.length >= 2;
+                        
+                        if (isNumber || isCharacter) {
+                          results.push({
+                            text: cleanText,
+                            confidence: word.confidence,
+                            bbox: word.bbox,
+                            type: isNumber ? 'number' : 'character'
+                          });
+                        }
                       }
                     }
                   }
@@ -151,37 +148,79 @@ export class AdvancedOCREngine {
       }
     }
 
-    console.log('Extracted results:', results);
+    // Fallback: extract from main text with improved parsing
+    if (results.length === 0 && data.text && data.text.trim().length > 0) {
+      console.log('Using fallback text extraction');
+      const lines = data.text.split('\n').filter(line => line.trim().length > 0);
+      
+      lines.forEach(line => {
+        // Split by spaces and common delimiters
+        const tokens = line.split(/[\s,]+/).filter(token => token.length > 0);
+        
+        tokens.forEach(token => {
+          const cleanToken = token.replace(/[^\w\s,.-]/g, '').trim();
+          if (cleanToken.length > 0) {
+            const isNumber = /^\d+$/.test(cleanToken);
+            const isCharacter = /^[a-zA-Z][a-zA-Z\s,.-]*$/.test(cleanToken) && cleanToken.length >= 2;
+            
+            if (isNumber || isCharacter) {
+              results.push({
+                text: cleanToken,
+                confidence: 50, // Default confidence for fallback
+                bbox: { x0: 0, y0: 0, x1: 0, y1: 0 },
+                type: isNumber ? 'number' : 'character'
+              });
+            }
+          }
+        });
+      });
+    }
+
+    console.log('Enhanced extraction results:', results);
     return results;
   }
 
   private postProcessResults(detectedTexts: DetectedText[]): DetectedText[] {
-    // Remove duplicates and merge nearby text
-    const refined: DetectedText[] = [];
-    const processed = new Set<string>();
-
+    // Enhanced duplicate removal and text merging
+    const textMap = new Map<string, DetectedText>();
+    
     for (const item of detectedTexts) {
-      const key = `${item.text}_${item.type}`;
-      if (!processed.has(key) && item.confidence > 20) { // Lower threshold for better detection
-        // Clean up text
-        let cleanText = item.text
-          .replace(/[^\w\s,.-]/g, '') // Remove special characters except basic punctuation
-          .replace(/\s+/g, ' ')       // Normalize whitespace
-          .trim();
+      if (item.confidence > 15 && item.text.length > 0) {
+        const key = `${item.text.toLowerCase()}_${item.type}`;
+        
+        if (!textMap.has(key) || textMap.get(key)!.confidence < item.confidence) {
+          // Clean up text more thoroughly
+          let cleanText = item.text
+            .replace(/[^\w\s,.-]/g, '') // Remove special chars except basic punctuation
+            .replace(/\s+/g, ' ')       // Normalize whitespace
+            .trim();
 
-        if (cleanText.length > 0) {
-          refined.push({
-            ...item,
-            text: cleanText,
-            confidence: Math.min(item.confidence, 99) // Cap confidence at 99%
-          });
-          processed.add(key);
+          // Additional cleaning for names and numbers
+          if (item.type === 'character') {
+            cleanText = cleanText.replace(/^\W+|\W+$/g, ''); // Remove leading/trailing non-word chars
+          }
+
+          if (cleanText.length > 0) {
+            textMap.set(key, {
+              ...item,
+              text: cleanText,
+              confidence: Math.min(item.confidence, 95)
+            });
+          }
         }
       }
     }
 
-    // Sort by confidence (highest first)
-    return refined.sort((a, b) => b.confidence - a.confidence);
+    // Convert back to array and sort by confidence
+    const refined = Array.from(textMap.values());
+    
+    // Sort by type (numbers first) then by confidence
+    return refined.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === 'number' ? -1 : 1;
+      }
+      return b.confidence - a.confidence;
+    });
   }
 
   async terminate(): Promise<void> {
