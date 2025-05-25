@@ -43,8 +43,8 @@ export class AdvancedOCREngine {
 
     // Optimize Tesseract parameters for cadastral maps
     await this.worker.setParameters({
-      tessedit_pageseg_mode: Tesseract.PSM.SINGLE_UNIFORM_BLOCK, // Use PSM enum
-      tessedit_ocr_engine_mode: Tesseract.OEM.LSTM_ONLY, // Use OEM enum
+      tessedit_pageseg_mode: 6, // PSM_SINGLE_UNIFORM_BLOCK
+      tessedit_ocr_engine_mode: 1, // OEM_LSTM_ONLY  
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789,. ',
       tessjs_create_hocr: '1',
       tessjs_create_tsv: '1',
