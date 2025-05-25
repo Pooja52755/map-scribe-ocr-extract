@@ -43,8 +43,8 @@ export class AdvancedOCREngine {
 
     // Optimize Tesseract parameters for cadastral maps
     await this.worker.setParameters({
-      tessedit_pageseg_mode: 6, // PSM_SINGLE_UNIFORM_BLOCK
-      tessedit_ocr_engine_mode: 1, // OEM_LSTM_ONLY  
+      tessedit_pageseg_mode: '6', // PSM_SINGLE_UNIFORM_BLOCK
+      tessedit_ocr_engine_mode: '1', // OEM_LSTM_ONLY  
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789,. ',
       tessjs_create_hocr: '1',
       tessjs_create_tsv: '1',
@@ -69,13 +69,20 @@ export class AdvancedOCREngine {
 
     progressCallback?.(70);
 
+    console.log('OCR Raw Data:', data);
+    console.log('OCR Text:', data.text);
+
     // Extract and classify detected text
     const detectedTexts = this.extractAndClassifyText(data);
     progressCallback?.(90);
 
+    console.log('Detected texts before post-processing:', detectedTexts);
+
     // Post-process results for better accuracy
     const refinedResults = this.postProcessResults(detectedTexts);
     progressCallback?.(100);
+
+    console.log('Final refined results:', refinedResults);
 
     return refinedResults;
   }
@@ -83,8 +90,38 @@ export class AdvancedOCREngine {
   private extractAndClassifyText(data: Tesseract.Page): DetectedText[] {
     const results: DetectedText[] = [];
     
-    // Access words through the correct property path
-    if (data.blocks) {
+    console.log('Processing OCR data structure:', data);
+    
+    // First, try to extract from the main text if available
+    if (data.text && data.text.trim().length > 0) {
+      const lines = data.text.split('\n').filter(line => line.trim().length > 0);
+      console.log('Found text lines:', lines);
+      
+      lines.forEach(line => {
+        const words = line.trim().split(/\s+/).filter(word => word.length > 0);
+        words.forEach(word => {
+          const cleanWord = word.replace(/[^\w\s,.-]/g, '').trim();
+          if (cleanWord.length > 0) {
+            const isNumber = /^\d+$/.test(cleanWord);
+            const isCharacter = /^[a-zA-Z\s,.-]+$/.test(cleanWord) && cleanWord.length > 1;
+            
+            if (isNumber || isCharacter) {
+              results.push({
+                text: cleanWord,
+                confidence: 75, // Default confidence when extracting from main text
+                bbox: { x0: 0, y0: 0, x1: 0, y1: 0 }, // Default bbox
+                type: isNumber ? 'number' : 'character'
+              });
+            }
+          }
+        });
+      });
+    }
+    
+    // Also try to extract from blocks structure if available
+    if (data.blocks && data.blocks.length > 0) {
+      console.log('Processing blocks structure:', data.blocks.length, 'blocks');
+      
       for (const block of data.blocks) {
         if (block.paragraphs) {
           for (const paragraph of block.paragraphs) {
@@ -115,6 +152,7 @@ export class AdvancedOCREngine {
       }
     }
 
+    console.log('Extracted results:', results);
     return results;
   }
 
@@ -125,7 +163,7 @@ export class AdvancedOCREngine {
 
     for (const item of detectedTexts) {
       const key = `${item.text}_${item.type}`;
-      if (!processed.has(key) && item.confidence > 40) {
+      if (!processed.has(key) && item.confidence > 20) { // Lower threshold for better detection
         // Clean up text
         let cleanText = item.text
           .replace(/[^\w\s,.-]/g, '') // Remove special characters except basic punctuation
