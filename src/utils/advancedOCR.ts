@@ -1,4 +1,3 @@
-
 import Tesseract from 'tesseract.js';
 import { ImagePreprocessor } from './imagePreprocessing';
 
@@ -43,8 +42,8 @@ export class AdvancedOCREngine {
 
     // Optimize Tesseract parameters for cadastral maps
     await this.worker.setParameters({
-      tessedit_pageseg_mode: '6', // Uniform block of text
-      tessedit_ocr_engine_mode: '1', // Neural nets LSTM engine
+      tessedit_pageseg_mode: 6, // Changed from string "6" to number 6
+      tessedit_ocr_engine_mode: 1, // Changed from string "1" to number 1
       tessedit_char_whitelist: 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789,. ',
       tessjs_create_hocr: '1',
       tessjs_create_tsv: '1',
@@ -83,20 +82,33 @@ export class AdvancedOCREngine {
   private extractAndClassifyText(data: Tesseract.Page): DetectedText[] {
     const results: DetectedText[] = [];
     
-    if (data.words) {
-      for (const word of data.words) {
-        if (word.confidence > 30 && word.text.trim().length > 0) {
-          const text = word.text.trim();
-          const isNumber = /^\d+$/.test(text);
-          const isCharacter = /^[a-zA-Z\s,.-]+$/.test(text) && text.length > 1;
-          
-          if (isNumber || isCharacter) {
-            results.push({
-              text: text,
-              confidence: word.confidence,
-              bbox: word.bbox,
-              type: isNumber ? 'number' : 'character'
-            });
+    // Access words through the correct property path
+    if (data.blocks) {
+      for (const block of data.blocks) {
+        if (block.paragraphs) {
+          for (const paragraph of block.paragraphs) {
+            if (paragraph.lines) {
+              for (const line of paragraph.lines) {
+                if (line.words) {
+                  for (const word of line.words) {
+                    if (word.confidence > 30 && word.text.trim().length > 0) {
+                      const text = word.text.trim();
+                      const isNumber = /^\d+$/.test(text);
+                      const isCharacter = /^[a-zA-Z\s,.-]+$/.test(text) && text.length > 1;
+                      
+                      if (isNumber || isCharacter) {
+                        results.push({
+                          text: text,
+                          confidence: word.confidence,
+                          bbox: word.bbox,
+                          type: isNumber ? 'number' : 'character'
+                        });
+                      }
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
